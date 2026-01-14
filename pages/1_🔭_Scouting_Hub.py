@@ -145,20 +145,39 @@ with tab1:
 # --- ONGLET 2 : ANALYSE FIABILITÉ ---
 with tab2:
     st.markdown("### 📊 Indice de Fiabilité (Risk-Adjusted)")
-    st.info("Le score de fiabilité pénalise les joueurs avec peu de matchs, même s'ils ont un gros Winrate.")
+    st.info("ℹ️ Le score de fiabilité pénalise les joueurs avec peu de matchs (incertitude), même s'ils ont un gros Winrate.")
     
+    # Création des données pour l'affichage (0-100)
+    rel_df = df.copy()
+    rel_df['Winrate_Pct'] = rel_df['Winrate'] * 100
+    rel_df['Fiabilite_Pct'] = rel_df['Fiabilité'] * 100
+
     st.dataframe(
-        df[['Player', 'Region', 'Games', 'Winrate', 'Fiabilité']],
+        rel_df[['Player', 'Region', 'Games', 'Winrate_Pct', 'Fiabilite_Pct']],
         use_container_width=True,
         column_config={
-            "Fiabilité": st.column_config.ProgressColumn(
-                "Score de Fiabilité", 
+            "Player": st.column_config.TextColumn("Joueur"),
+            "Region": st.column_config.TextColumn("Région"),
+            "Games": st.column_config.NumberColumn("Games", format="%d"),
+            
+            # WINRATE (Barre visuelle)
+            "Winrate_Pct": st.column_config.ProgressColumn(
+                "Winrate", 
+                format="%d%%", 
                 min_value=0, 
-                max_value=1, 
-                format="%.3f"
+                max_value=100
             ),
-            "Winrate": st.column_config.NumberColumn("Winrate", format="%.2f")
-        }
+            
+            # FIABILITÉ (Barre visuelle)
+            "Fiabilite_Pct": st.column_config.ProgressColumn(
+                "Score Fiabilité 🔒", 
+                help="Indice de confiance statistique (Wilson Score)",
+                min_value=0, 
+                max_value=100, 
+                format="%d%%" 
+            ),
+        },
+        hide_index=True
     )
 
 # --- ONGLET 3 : COMPARATEUR (DUEL) ---
@@ -167,7 +186,7 @@ with tab3:
     
     col_search_1, col_search_2 = st.columns(2)
     
-    # Création de la liste de recherche "Nom (Role)"
+    # Création de la liste de recherche
     search_list = df['Player'] + " (" + df['Role'] + ")"
     
     with col_search_1:
@@ -179,7 +198,7 @@ with tab3:
         # KPI Cards
         c1, c2, c3 = st.columns(3)
         c1.metric("Winrate", f"{row_1['Winrate']*100:.0f}%")
-        c2.metric("KDA", row_1['KDA'])
+        c2.metric("KDA", f"{row_1['KDA']:.2f}")
         c3.metric("Games", row_1['Games'])
 
     with col_search_2:
@@ -190,10 +209,10 @@ with tab3:
         name_2 = choice_2.split(" (")[0]
         row_2 = df[df['Player'] == name_2].iloc[0]
         
-        # KPI Cards avec Delta
+        # KPI Cards avec Delta (Code couleur automatique vert/rouge)
         c1, c2, c3 = st.columns(3)
         c1.metric("Winrate", f"{row_2['Winrate']*100:.0f}%", delta=f"{(row_2['Winrate']-row_1['Winrate'])*100:.1f}%")
-        c2.metric("KDA", row_2['KDA'], delta=f"{row_2['KDA']-row_1['KDA']:.2f}")
+        c2.metric("KDA", f"{row_2['KDA']:.2f}", delta=f"{row_2['KDA']-row_1['KDA']:.2f}")
         c3.metric("Games", row_2['Games'], delta=f"{row_2['Games']-row_1['Games']}")
 
     st.divider()
@@ -203,16 +222,41 @@ with tab3:
     
     with col_graph:
         st.subheader("Visualisation Radar")
-        # Appel de la fonction définie plus haut
-        fig = create_radar_chart(row_1, row_2)
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("*Les échelles sont normalisées (Max: 100% WR, 10 KDA, 100 Games)")
+        # On suppose que ta fonction create_radar_chart existe toujours plus haut
+        try:
+            fig = create_radar_chart(row_1, row_2)
+            st.plotly_chart(fig, use_container_width=True)
+        except NameError:
+            st.error("La fonction 'create_radar_chart' n'est pas définie.")
+        st.caption("*Les échelles sont normalisées sur les maximums de la base de données.")
 
     with col_data:
         st.subheader("Détails Comparatifs")
-        comp_df = pd.DataFrame([row_1, row_2])
-        # Affichage transposé pour une lecture facile
-        st.dataframe(
-            comp_df[['Player', 'Winrate', 'KDA', 'Games', 'Fiabilité']].set_index('Player').T,
-            use_container_width=True
-        )
+        
+        # Préparation propre des données pour l'affichage transposé
+        # On formate les valeurs EN STRING ici car c'est dur de configurer un tableau transposé
+        comp_data = [
+            {
+                "Métadonnée": "Winrate", 
+                row_1['Player']: f"{row_1['Winrate']*100:.1f}%", 
+                row_2['Player']: f"{row_2['Winrate']*100:.1f}%"
+            },
+            {
+                "Métadonnée": "KDA", 
+                row_1['Player']: f"{row_1['KDA']:.2f}", 
+                row_2['Player']: f"{row_2['KDA']:.2f}"
+            },
+            {
+                "Métadonnée": "Games", 
+                row_1['Player']: row_1['Games'], 
+                row_2['Player']: row_2['Games']
+            },
+            {
+                "Métadonnée": "Fiabilité", 
+                row_1['Player']: f"{row_1['Fiabilité']*100:.1f}%", 
+                row_2['Player']: f"{row_2['Fiabilité']*100:.1f}%"
+            }
+        ]
+        
+        comp_df_clean = pd.DataFrame(comp_data)
+        st.dataframe(comp_df_clean, hide_index=True, use_container_width=True)
