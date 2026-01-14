@@ -143,24 +143,55 @@ with tab1:
     st.caption(f"{len(filtered_df)} joueurs trouvés correspondant aux critères.")
 
 # --- ONGLET 2 : ANALYSE FIABILITÉ ---
+# --- ONGLET 2 : ANALYSE FIABILITÉ (FILTRABLE) ---
 with tab2:
     st.markdown("### 📊 Indice de Fiabilité (Risk-Adjusted)")
     st.info("ℹ️ Le score de fiabilité pénalise les joueurs avec peu de matchs (incertitude), même s'ils ont un gros Winrate.")
     
-    # Création des données pour l'affichage (0-100)
-    rel_df = df.copy()
-    rel_df['Winrate_Pct'] = rel_df['Winrate'] * 100
-    rel_df['Fiabilite_Pct'] = rel_df['Fiabilité'] * 100
+    # --- ZONE DE FILTRES ---
+    col_f1, col_f2 = st.columns(2)
+    
+    with col_f1:
+        # On utilise une liste unique pour les rôles
+        roles_list_2 = df['Role'].unique().tolist()
+        # Note : On met un key unique (key="filter_role_tab2") pour ne pas entrer en conflit avec l'onglet 1
+        selected_roles_2 = st.multiselect(
+            "Filtrer par Rôle", 
+            roles_list_2, 
+            default=roles_list_2, 
+            key="filter_role_tab2"
+        )
 
+    with col_f2:
+        regions_list_2 = df['Region'].unique().tolist()
+        selected_regions_2 = st.multiselect(
+            "Filtrer par Région", 
+            regions_list_2, 
+            default=regions_list_2, 
+            key="filter_region_tab2"
+        )
+
+    # --- APPLICATION DES FILTRES ---
+    rel_filtered_df = df[
+        (df['Role'].isin(selected_roles_2)) & 
+        (df['Region'].isin(selected_regions_2))
+    ].copy()
+
+    # --- PRÉPARATION DES DONNÉES (0-100) ---
+    rel_filtered_df['Winrate_Pct'] = rel_filtered_df['Winrate'] * 100
+    rel_filtered_df['Fiabilite_Pct'] = rel_filtered_df['Fiabilité'] * 100
+
+    # --- AFFICHAGE DU TABLEAU ---
     st.dataframe(
-        rel_df[['Player', 'Region', 'Games', 'Winrate_Pct', 'Fiabilite_Pct']],
+        rel_filtered_df[['Player', 'Role', 'Region', 'Games', 'Winrate_Pct', 'Fiabilite_Pct']],
         use_container_width=True,
         column_config={
-            "Player": st.column_config.TextColumn("Joueur"),
-            "Region": st.column_config.TextColumn("Région"),
+            "Player": st.column_config.TextColumn("Joueur", width="medium"),
+            "Role": st.column_config.TextColumn("Rôle", width="small"),
+            "Region": st.column_config.TextColumn("Région", width="small"),
             "Games": st.column_config.NumberColumn("Games", format="%d"),
             
-            # WINRATE (Barre visuelle)
+            # WINRATE (Barre visuelle 0-100)
             "Winrate_Pct": st.column_config.ProgressColumn(
                 "Winrate", 
                 format="%d%%", 
@@ -168,7 +199,7 @@ with tab2:
                 max_value=100
             ),
             
-            # FIABILITÉ (Barre visuelle)
+            # FIABILITÉ (Barre visuelle 0-100)
             "Fiabilite_Pct": st.column_config.ProgressColumn(
                 "Score Fiabilité 🔒", 
                 help="Indice de confiance statistique (Wilson Score)",
@@ -179,6 +210,8 @@ with tab2:
         },
         hide_index=True
     )
+    
+    st.caption(f"Analyse sur {len(rel_filtered_df)} joueurs.")
 
 # --- ONGLET 3 : COMPARATEUR (DUEL) ---
 with tab3:
