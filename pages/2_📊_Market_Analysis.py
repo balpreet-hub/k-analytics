@@ -1,6 +1,63 @@
-# --- 6. INTERFACE PRINCIPALE (CORRIGÉE & ÉTENDUE) ---
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from services.data_factory import load_scouting_data
+
+# --- 1. CONFIGURATION (DOIT ETRE EN PREMIER ABSOLUMENT) ---
+st.set_page_config(page_title="Market Analysis", page_icon="📊", layout="wide")
+
+st.title("📊 Market Analysis & Arbitrage")
+st.markdown("### Détection des actifs sous-évalués (Moneyball Approach)")
+
+# --- 2. CHARGEMENT DES DONNÉES ---
+df = load_scouting_data()
+
+if df.empty:
+    st.error("❌ Données introuvables. Vérifie ton chargement.")
+    st.stop()
+
+# --- 3. SIDEBAR INTELLIGENTE (FILTRES) ---
+st.sidebar.header("🔍 Market Filters")
+
+# Filtre A : Rôle
+selected_role = st.sidebar.selectbox(
+    "Filtrer par Rôle", 
+    ["Tous"] + list(df['Role'].unique())
+)
+
+# Filtre B : Régions
+all_regions = df['Region'].unique().tolist()
+selected_regions = st.sidebar.multiselect(
+    "Filtrer par Région", 
+    all_regions, 
+    default=all_regions, 
+    placeholder="Choisis tes ligues..."
+)
+
+# Filtre C : Expérience
+min_games = st.sidebar.slider("Minimum de games jouées", 5, 100, 10)
+
+# --- 4. MOTEUR DE FILTRAGE ---
+df_market = df[
+    (df['Games'] >= min_games) & 
+    (df['Region'].isin(selected_regions))
+].copy()
+
+if selected_role != "Tous":
+    df_market = df_market[df_market['Role'] == selected_role]
+
+if df_market.empty:
+    st.warning("⚠️ Aucun joueur ne correspond à ces critères.")
+    st.stop()
+
+# --- 5. CALCUL DU BENCHMARK (MOYENNES) ---
+avg_winrate = df_market['Winrate'].mean()
+avg_kda = df_market['KDA'].mean()
+
+# --- 6. INTERFACE PRINCIPALE (COLONNES) ---
 col_main, col_kpi = st.columns([3, 1])
 
+# --- 6A. COLONNE DE DROITE : STRATÉGIE & CARTES ---
 with col_kpi:
     st.subheader("🎯 Stratégie de Scouting")
     
@@ -9,7 +66,7 @@ with col_kpi:
         [
             "💎 Vétérans Sous-cotés", 
             "🔥 Futures Pépites (Rookies)",
-            "🎲 Reckless Bets (High Risk)"  # <--- NOUVEAU
+            "🎲 Reckless Bets (High Risk)"
         ],
         captions=[
             "Solides mais perdants (Moneyball)", 
@@ -95,7 +152,7 @@ with col_kpi:
     else:
         st.caption("🚫 Le marché est sec. Aucun profil ne correspond.")
 
-# --- LA PARTIE GRAPHIQUE ---
+# --- 6B. COLONNE DE GAUCHE : GRAPHIQUE ---
 with col_main:
     # Titre dynamique
     title_map = {
@@ -121,8 +178,8 @@ with col_main:
     )
 
     # Quadrants de référence
-    fig.add_hline(y=avg_winrate, line_dash="dash", line_color="gray", opacity=0.5)
-    fig.add_vline(x=avg_kda, line_dash="dash", line_color="gray", opacity=0.5)
+    fig.add_hline(y=avg_winrate, line_dash="dash", line_color="gray", opacity=0.5, annotation_text="Moy. Winrate")
+    fig.add_vline(x=avg_kda, line_dash="dash", line_color="gray", opacity=0.5, annotation_text="Moy. KDA")
 
     # Zone de Danger (Reckless)
     if "Reckless" in scouting_mode:
@@ -142,3 +199,11 @@ with col_main:
     )
     
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
+
+# --- 7. DONNÉES BRUTES ---
+with st.expander("📂 Voir les données du segment"):
+    st.dataframe(
+        df_market[['Player', 'Role', 'Region', 'Games', 'Winrate', 'KDA']], 
+        use_container_width=True,
+        hide_index=True
+    )
