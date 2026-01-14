@@ -1,0 +1,155 @@
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+from services.data_factory import load_scouting_data
+from models.wilson_score import calculate_wilson_lower_bound
+
+# --- CONFIGURATION (Doit être la première commande Streamlit) ---
+st.set_page_config(page_title="Scouting Network", page_icon="🌍", layout="wide")
+
+# --- FONCTIONS UTILITAIRES (Le moteur du graphique) ---
+def create_radar_chart(row_a, row_b=None):
+    """
+    Crée un radar chart comparatif.
+    On normalise les échelles pour que le graphique soit lisible.
+    """
+    categories = ['Winrate', 'KDA', 'Games']
+    
+    # Normalisation :
+    # Winrate est déjà entre 0 et 1 (ex: 0.55)
+    # KDA est divisé par 10 (ex: 5.0 devient 0.5)
+    # Games est divisé par 100 (ex: 50 devient 0.5)
+    
+    fig = go.Figure()
+
+    # Joueur A (Bleu KC)
+    fig.add_trace(go.Scatterpolar(
+        r=[row_a['Winrate'], row_a['KDA']/10, row_a['Games']/100], 
+        theta=categories,
+        fill='toself',
+        name=row_a['Player'],
+        line_color='#1E90FF'
+    ))
+
+    # Joueur B (Rouge Adversaire)
+    if row_b is not None:
+        fig.add_trace(go.Scatterpolar(
+            r=[row_b['Winrate'], row_b['KDA']/10, row_b['Games']/100],
+            theta=categories,
+            fill='toself',
+            name=row_b['Player'],
+            line_color='#FF4500'
+        ))
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 1] # Echelle fixe de 0 à 1 pour comparer équitablement
+            )),
+        showlegend=True,
+        margin=dict(t=20, b=20, l=20, r=20),
+        height=400,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="white")
+    )
+    return fig
+
+# --- MAIN PAGE (L'interface) ---
+st.title("🌍 Global Scouting Network")
+
+# 1. Chargement & Calculs
+df = load_scouting_data()
+
+if df.empty:
+    st.error("⚠️ Aucune donnée disponible. Vérifie que 'données 2025.csv' est bien dans le dossier 'data'.")
+    st.stop()
+
+# Calcul de la Fiabilité (Wilson Score)
+# On crée la colonne 'Fiabilité' ici
+df['Fiabilité'] = df.apply(calculate_wilson_lower_bound, axis=1)
+# Tri par défaut par fiabilité
+df = df.sort_values(by="Fiabilité", ascending=False)
+
+# 2. Interface Onglets
+tab1, tab2, tab3 = st.tabs(["📂 Base de données", "📊 Fiabilité", "⚔️ Duel & Comparateur"])
+
+# --- ONGLET 1 : BASE DE DONNEES ---
+with tab1:
+    st.dataframe(df, use_container_width=True)
+
+# --- ONGLET 2 : ANALYSE FIABILITÉ ---
+with tab2:
+    st.markdown("### 📊 Indice de Fiabilité (Risk-Adjusted)")
+    st.info("Le score de fiabilité pénalise les joueurs avec peu de matchs, même s'ils ont un gros Winrate.")
+    
+    st.dataframe(
+        df[['Player', 'Region', 'Games', 'Winrate', 'Fiabilité']],
+        use_container_width=True,
+        column_config={
+            "Fiabilité": st.column_config.ProgressColumn(
+                "Score de Fiabilité", 
+                min_value=0, 
+                max_value=1, 
+                format="%.3f"
+            ),
+            "Winrate": st.column_config.NumberColumn("Winrate", format="%.2f")
+        }
+    )
+
+# --- ONGLET 3 : COMPARATEUR (DUEL) ---
+with tab3:
+    st.markdown("### ⚔️ Comparateur Head-to-Head")
+    
+    col_search_1, col_search_2 = st.columns(2)
+    
+    # Création de la liste de recherche "Nom (Role)"
+    search_list = df['Player'] + " (" + df['Role'] + ")"
+    
+    with col_search_1:
+        st.info("🔵 Joueur Principal (KC Focus)")
+        choice_1 = st.selectbox("Rechercher Joueur 1", search_list, index=0)
+        name_1 = choice_1.split(" (")[0]
+        row_1 = df[df['Player'] == name_1].iloc[0]
+        
+        # KPI Cards
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Winrate", f"{row_1['Winrate']*100:.0f}%")
+        c2.metric("KDA", row_1['KDA'])
+        c3.metric("Games", row_1['Games'])
+
+    with col_search_2:
+        st.warning("🔴 Adversaire (Cible)")
+        # Sélection intelligente (prend le 2ème de la liste par défaut)
+        idx_2 = 1 if len(search_list) > 1 else 0
+        choice_2 = st.selectbox("Rechercher Joueur 2", search_list, index=idx_2)
+        name_2 = choice_2.split(" (")[0]
+        row_2 = df[df['Player'] == name_2].iloc[0]
+        
+        # KPI Cards avec Delta
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Winrate", f"{row_2['Winrate']*100:.0f}%", delta=f"{(row_2['Winrate']-row_1['Winrate'])*100:.1f}%")
+        c2.metric("KDA", row_2['KDA'], delta=f"{row_2['KDA']-row_1['KDA']:.2f}")
+        c3.metric("Games", row_2['Games'], delta=f"{row_2['Games']-row_1['Games']}")
+
+    st.divider()
+    
+    # Zone Graphique et Données
+    col_graph, col_data = st.columns([2, 1])
+    
+    with col_graph:
+        st.subheader("Visualisation Radar")
+        # Appel de la fonction définie plus haut
+        fig = create_radar_chart(row_1, row_2)
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("*Les échelles sont normalisées (Max: 100% WR, 10 KDA, 100 Games)")
+
+    with col_data:
+        st.subheader("Détails Comparatifs")
+        comp_df = pd.DataFrame([row_1, row_2])
+        # Affichage transposé pour une lecture facile
+        st.dataframe(
+            comp_df[['Player', 'Winrate', 'KDA', 'Games', 'Fiabilité']].set_index('Player').T,
+            use_container_width=True
+        )
