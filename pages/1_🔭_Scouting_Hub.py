@@ -75,41 +75,72 @@ df = df.sort_values(by="Fiabilité", ascending=False)
 # 2. Interface Onglets
 tab1, tab2, tab3 = st.tabs(["📂 Base de données", "📊 Fiabilité", "⚔️ Duel & Comparateur"])
 
-# --- ONGLET 1 : BASE DE DONNEES ---
-# --- ONGLET 1 : BASE DE DONNEES (OPTIMISÉ) ---
+# --- ONGLET 1 : BASE DE DONNEES (FILTRABLE & CORRIGÉE) ---
 with tab1:
     st.markdown("### 🌍 Global Scouting Network")
+    
+    # --- ZONE DE FILTRES ---
+    # On crée des colonnes pour aligner les filtres proprement
+    col_filter_1, col_filter_2 = st.columns(2)
+    
+    with col_filter_1:
+        # Filtre Rôle (Multiselection)
+        roles_list = df['Role'].unique().tolist()
+        selected_roles = st.multiselect("Filtrer par Rôle", roles_list, default=roles_list, placeholder="Choisis les rôles...")
+
+    with col_filter_2:
+        # Filtre Région (Multiselection)
+        regions_list = df['Region'].unique().tolist()
+        selected_regions = st.multiselect("Filtrer par Région", regions_list, default=regions_list, placeholder="Choisis les régions...")
+
+    # --- APPLICATION DES FILTRES ---
+    # On garde uniquement les lignes qui correspondent aux choix
+    filtered_df = df[
+        (df['Role'].isin(selected_roles)) & 
+        (df['Region'].isin(selected_regions))
+    ].copy() # .copy() est important pour éviter les avertissements pandas
+
+    # --- CORRECTION DES POURCENTAGES ---
+    # On multiplie par 100 pour passer de 0.97 à 97.0
+    # C'est plus simple pour l'affichage que de se battre avec les formats
+    filtered_df['Winrate_Pct'] = filtered_df['Winrate'] * 100
+    filtered_df['Fiabilite_Pct'] = filtered_df['Fiabilité'] * 100
+
+    # --- AFFICHAGE DU TABLEAU ---
     st.dataframe(
-        df,
+        filtered_df,
         use_container_width=True,
+        column_order=["Player", "Role", "Region", "Games", "Winrate_Pct", "KDA", "Fiabilite_Pct"], # Ordre forcé des colonnes
         column_config={
             "Player": st.column_config.TextColumn("Joueur", width="medium"),
             "Role": st.column_config.TextColumn("Rôle", width="small"),
             "Region": st.column_config.TextColumn("Région", width="small"),
             "Games": st.column_config.NumberColumn("Games 🕹️", format="%d"),
             
-            # VISUALISATION DYNAMIQUE DU WINRATE
-            "Winrate": st.column_config.ProgressColumn(
+            # WINRATE (Échelle 0-100)
+            "Winrate_Pct": st.column_config.ProgressColumn(
                 "Winrate 🏆",
                 help="Pourcentage de victoires",
-                format="%.0f%%",
+                format="%d%%", # Affiche 97%
                 min_value=0,
-                max_value=1,
+                max_value=100,
             ),
             
             "KDA": st.column_config.NumberColumn("KDA ⚔️", format="%.2f"),
             
-            # VISUALISATION DYNAMIQUE DE LA FIABILITÉ
-            "Fiabilité": st.column_config.ProgressColumn(
+            # FIABILITÉ (Échelle 0-100)
+            "Fiabilite_Pct": st.column_config.ProgressColumn(
                 "Indice Confiance 🔒",
-                help="Score pondéré par le volume de jeu",
-                format="%.0f%%",  # Affichage en % plus propre que 0.89
+                format="%d%%", 
                 min_value=0,
-                max_value=1,
+                max_value=100,
             ),
         },
-        hide_index=True  # Supprime la colonne 0,1,2 inutile à gauche
+        hide_index=True
     )
+    
+    # Petit indicateur du nombre de joueurs trouvés
+    st.caption(f"{len(filtered_df)} joueurs trouvés correspondant aux critères.")
 
 # --- ONGLET 2 : ANALYSE FIABILITÉ ---
 with tab2:
