@@ -76,8 +76,40 @@ df = df.sort_values(by="Fiabilité", ascending=False)
 tab1, tab2, tab3 = st.tabs(["📂 Base de données", "📊 Fiabilité", "⚔️ Duel & Comparateur"])
 
 # --- ONGLET 1 : BASE DE DONNEES ---
+# --- ONGLET 1 : BASE DE DONNEES (OPTIMISÉ) ---
 with tab1:
-    st.dataframe(df, use_container_width=True)
+    st.markdown("### 🌍 Global Scouting Network")
+    st.dataframe(
+        df,
+        use_container_width=True,
+        column_config={
+            "Player": st.column_config.TextColumn("Joueur", width="medium"),
+            "Role": st.column_config.TextColumn("Rôle", width="small"),
+            "Region": st.column_config.TextColumn("Région", width="small"),
+            "Games": st.column_config.NumberColumn("Games 🕹️", format="%d"),
+            
+            # VISUALISATION DYNAMIQUE DU WINRATE
+            "Winrate": st.column_config.ProgressColumn(
+                "Winrate 🏆",
+                help="Pourcentage de victoires",
+                format="%.0f%%",
+                min_value=0,
+                max_value=1,
+            ),
+            
+            "KDA": st.column_config.NumberColumn("KDA ⚔️", format="%.2f"),
+            
+            # VISUALISATION DYNAMIQUE DE LA FIABILITÉ
+            "Fiabilité": st.column_config.ProgressColumn(
+                "Indice Confiance 🔒",
+                help="Score pondéré par le volume de jeu",
+                format="%.0f%%",  # Affichage en % plus propre que 0.89
+                min_value=0,
+                max_value=1,
+            ),
+        },
+        hide_index=True  # Supprime la colonne 0,1,2 inutile à gauche
+    )
 
 # --- ONGLET 2 : ANALYSE FIABILITÉ ---
 with tab2:
