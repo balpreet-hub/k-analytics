@@ -105,34 +105,113 @@ with col_main:
         config={'scrollZoom': True, 'displayModeBar': True} # <--- LA CLE DU ZOOM
     )
 
-with col_kpi:
-    st.subheader("🎯 Opportunités")
-    st.caption("Joueurs 'Sous-cotés' (KDA > Avg mais Winrate < Avg)")
-    
-    # Logique d'Arbitrage Moneyball
-    undervalued = df_market[
-        (df_market['KDA'] > avg_kda) & 
-        (df_market['Winrate'] < avg_winrate)
-    ].copy()
-    
-    # Score d'arbitrage : Plus le KDA est haut par rapport à la moyenne, plus c'est intéressant
-    undervalued['Gap'] = undervalued['KDA'] - avg_kda
-    undervalued = undervalued.sort_values(by='Gap', ascending=False)
-    
-    if not undervalued.empty:
-        for i, row in undervalued.head(4).iterrows():
-            st.warning(
-                f"💎 **{row['Player']}**\n\n"
-                f"Region: {row['Region']}\n"
-                f"KDA: {row['KDA']:.2f} (+{row['Gap']:.1f})\n"
-                f"WR: {row['Winrate']*100:.0f}%"
-            )
-    else:
-        st.success("Le marché est efficient. Pas d'anomalies détectées.")
+# --- 6. INTERFACE PRINCIPALE ---
+col_main, col_kpi = st.columns([3, 1])
 
+with col_kpi:
+    st.subheader("🎯 Stratégie de Scouting")
+    
+    # SÉLECTEUR DE MODE : C'est ici que tout change
+    scouting_mode = st.radio(
+        "Quel type de joueur cherches-tu ?",
+        ["💎 Vétérans Sous-cotés", "🔥 Futures Pépites (Rookies)"],
+        captions=["Bonnes stats, mauvaise équipe", "Peu d'expérience, stats explosives"]
+    )
+    
     st.divider()
-    st.metric("KDA Moyen", f"{avg_kda:.2f}")
-    st.metric("Winrate Moyen", f"{avg_winrate*100:.1f}%")
+
+    # LOGIQUE 1 : MONEYBALL (Vétérans solides dans mauvaises équipes)
+    if scouting_mode == "💎 Vétérans Sous-cotés":
+        st.markdown("##### 📉 Cibles : 'Unfair Loss'")
+        st.caption("Joueurs avec un KDA supérieur à la moyenne, mais un Winrate inférieur.")
+        
+        opportunities = df_market[
+            (df_market['KDA'] > avg_kda) & 
+            (df_market['Winrate'] < avg_winrate)
+        ].copy()
+        
+        # On trie par l'écart de KDA (le plus injustement traité)
+        opportunities['Score'] = opportunities['KDA'] - avg_kda
+
+    # LOGIQUE 2 : ROOKIE RADAR (Haut potentiel, faible volume)
+    else:
+        st.markdown("##### 🚀 Cibles : 'High Potential'")
+        st.caption("Joueurs avec moins de 50 games (Rookies) mais des stats dominantes.")
+        
+        # On définit un "Rookie" comme quelqu'un qui a PEU de games dans le dataset filtré
+        # On prend les joueurs qui ont moins de 60 games (ajustable)
+        rookie_cap = 60
+        
+        opportunities = df_market[
+            (df_market['Games'] <= rookie_cap) &    # C'est un nouveau
+            (df_market['KDA'] > avg_kda * 1.1) &    # 10% meilleur que la moyenne mécanique
+            (df_market['Winrate'] > 0.5)            # Il gagne quand même (mentalité winner)
+        ].copy()
+        
+        # Pour les rookies, on veut un mix de KDA explosif et de Winrate
+        opportunities['Score'] = (opportunities['KDA'] * 2) + (opportunities['Winrate'] * 10)
+
+    # --- AFFICHAGE DES CARTES JOUEURS ---
+    opportunities = opportunities.sort_values(by='Score', ascending=False)
+    
+    if not opportunities.empty:
+        for i, row in opportunities.head(5).iterrows():
+            # Couleur dynamique selon le mode
+            card_color = "orange" if scouting_mode == "🔥 Futures Pépites (Rookies)" else "blue"
+            
+            with st.container():
+                st.markdown(f"""
+                <div style="
+                    padding: 10px; 
+                    border-radius: 8px; 
+                    border-left: 5px solid {card_color};
+                    background-color: #262730;
+                    margin-bottom: 10px;">
+                    <strong>{row['Player']}</strong> <span style="color:gray; font-size:0.8em;">({row['Region']})</span><br>
+                    <span style="font-size:0.9em;">🗡️ KDA: {row['KDA']:.2f} | 🏆 WR: {row['Winrate']*100:.0f}%</span><br>
+                    <span style="font-size:0.8em; color: #aaa;">🕹️ {row['Games']} games</span>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("Aucun profil ne correspond à cette recherche.")
+
+# --- LA PARTIE GRAPHIQUE (COLONNE GAUCHE) ---
+with col_main:
+    st.subheader(f"Analyse de Marché : {scouting_mode}")
+    
+    # On adapte le titre du graph selon le mode
+    graph_title = "Matrice d'Inefficacité" if "Vétérans" in scouting_mode else "Radar à Rookies"
+    
+    fig = px.scatter(
+        df_market,
+        x="KDA",
+        y="Winrate",
+        color="Region",
+        size="Games",
+        hover_name="Player",
+        hover_data={"Role": True, "Games": True, "KDA": ":.2f", "Winrate": ":.1%"},
+        title=graph_title,
+        template="plotly_dark",
+        opacity=0.7
+    )
+
+    # Quadrants
+    fig.add_hline(y=avg_winrate, line_dash="dash", line_color="white", opacity=0.3)
+    fig.add_vline(x=avg_kda, line_dash="dash", line_color="white", opacity=0.3)
+    
+    # Si on est en mode "Pépites", on met en évidence la zone "High KDA / Low Games"
+    # C'est visuel seulement, mais ça aide à comprendre
+    
+    fig.update_traces(marker=dict(line=dict(width=1, color='White')))
+    fig.update_layout(
+        height=650,
+        xaxis_title="KDA (Mécanique)",
+        yaxis_title="Winrate (Impact)",
+        dragmode='pan',
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # --- 7. DONNÉES BRUTES ---
 with st.expander("📂 Voir les données du segment"):
